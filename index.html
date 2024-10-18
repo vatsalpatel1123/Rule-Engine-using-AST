@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rule Engine with AST</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <style>
+        body {
+            font-family: 'Source Code Pro', monospace; /* Updated font */
+            background-color: #121212; /* Dark background */
+            color: #ffffff; /* Text color for better contrast */
+            margin: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            background-color: #1e1e1e; /* Darker background for textareas */
+            color: #ffffff; /* Text color for textareas */
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #7d7d7d; /* Mid-light gray background */
+            color: #ffffff; /* Text color for buttons */
+            border: none; /* Remove border */
+            padding: 10px 20px; /* Padding for buttons */
+            font-family: 'Source Code Pro', monospace; /* Updated font for buttons */
+            cursor: pointer; /* Pointer cursor on hover */
+        }
+        button:hover {
+            background-color: #666666; /* Darker gray on hover */
+        }
+        .result {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .treeDisplay {
+            white-space: pre;
+            font-family: monospace;
+            margin-top: 20px;
+            background-color: #1e1e1e; /* Darker background for tree display */
+            padding: 10px;
+            border: 1px solid #ccc;
+            color: #ffffff; /* Text color for tree display */
+        }
+        .visualBox {
+            flex: 1;
+            margin-right: 10px;
+            background-color: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            color: #ffffff;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400&display=swap" rel="stylesheet"> <!-- Google Font -->
+</head>
+<body>
+
+    <h1 id="typingHeading"></h1> <!-- Updated ID for typing effect -->
+    
+    <h2>Create Rule</h2>
+    <textarea id="ruleInput" placeholder="Enter rule (e.g., (age > 30 AND department = 'Sales'))"></textarea><br>
+    <button id="createRuleBtn">Create Rule</button>
+    <div class="visualBox">
+        <h3>Rule 1 (Visual)</h3>
+    <pre id="createRuleTree"></pre>
+  </div>
+    <h2>Combine Rules</h2>
+    <textarea id="combinedRuleInput" placeholder="Enter rules separated by new line"></textarea><br>
+    <button id="combineRulesBtn">Combine Rules</button>
+    <div class="visualBox">
+        <h3>Combined Rules (Visual)</h3>
+        <pre id="combineRuleTree"></pre>
+    </div>
+
+    <h2>Evaluate Rule</h2>
+    <textarea id="dataInput" placeholder='Enter JSON data (e.g., {"age": 35, "department": "Sales", "salary": 60000, "experience": 3})'></textarea><br>
+    <button id="evaluateRuleBtn">Evaluate Rule</button>
+    <div class="visualBox">
+        <h3>Evaluate Rules (Visual)</h3>
+    <pre id="evaluateRuleTree"></pre>
+    </div>
+
+    <div class="result" id="resultDisplay"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+    <script>
+    
+     const typingEffect = (element, text, delay = 100) => {
+            let index = 0;
+            const interval = setInterval(() => {
+                if (index < text.length) {
+                    element.textContent += text.charAt(index);
+                    index++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, delay);
+        };
+
+        // Initialize typing effect on page load
+        window.onload = () => {
+            const headingElement = document.getElementById('typingHeading');
+            const headingText = "Rule Engine with AST (Created by Vatsal)"; // Your heading text
+            typingEffect(headingElement, headingText);
+        };
+        
+        function parseRuleString(ruleString) {
+            const tokens = ruleString.match(/(\(|\)|AND|OR|<=|>=|!=|<|>|=|[^()\s]+)/g);
+            const stack = [];
+            const operators = [];
+
+            function popOperator() {
+                const operator = operators.pop();
+                const right = stack.pop();
+                const left = stack.pop();
+                stack.push({ type: 'operator', operator, left, right });
+            }
+
+            for (let i = 0; i < tokens.length; i++) {
+                const token = tokens[i].trim();
+                if (token === ' ') continue; // Skip empty tokens (spaces)
+
+                if (token === 'AND' || token === 'OR') {
+                    while (operators.length && operators[operators.length - 1] !== '(') {
+                        popOperator();
+                    }
+                    operators.push(token);
+                } else if (token === '(') {
+                    operators.push(token);
+                } else if (token === ')') {
+                    while (operators.length && operators[operators.length - 1] !== '(') {
+                        popOperator();
+                    }
+                    operators.pop();
+                } else {
+                    let key = null, operator = null, value = null;
+                    while(i < tokens.length && (key == null || operator == null || value == null)) {
+                        if (key === null) key = tokens[i];
+                        else if (operator === null) operator = tokens[i];
+                        else value = tokens[i];
+                        i++;
+                    }
+                    i--;
+                    stack.push({ type: 'operand', key, operator, value });
+                }
+            }
+
+            while (operators.length) {
+                popOperator();
+            }
+
+            return stack[0];
+        }
+
+        function combineNodes(rules, op) {
+            if (rules.length === 1) return rules[0];
+
+            let combined = rules[0];
+            for (let i = 1; i < rules.length; i++) {
+                combined = { type: 'operator', operator: op, left: combined, right: rules[i] };
+            }
+
+            return combined;
+        }
+
+        function evaluate(node, data) {
+            if (node.type === 'operator') {
+                const left = evaluate(node.left, data);
+                const right = evaluate(node.right, data);
+                return node.operator === 'AND' ? left && right : left || right;
+            } else if (node.type === 'operand') {
+                let { key, operator, value } = node;
+                if (typeof value === 'string' && value[0] === "'" && value[value.length - 1] === "'") {
+                    value = value.slice(1, value.length - 1);
+                }
+                switch (operator) {
+                    case '>':
+                        return data[key] > value;
+                    case '<':
+                        return data[key] < value;
+                    case '>=':
+                        return data[key] >= value;
+                    case '<=':
+                        return data[key] <= value;
+                    case '==':
+                        return data[key] == value;
+                    case '!=':
+                        return data[key] != value;
+                    case '=':
+                        return data[key] == value;
+                    default:
+                        return false;
+                }
+            }
+            return false;
+        }
+
+        function printTree(node, prefix = '', isLeft = true) {
+            if (!node) return '';
+            let result = prefix + (isLeft ? "├── " : "└── ") + (node.type === 'operator' ? node.operator : `${node.key} ${node.operator} ${node.value}`) + '\n';
+            if (node.left) result += printTree(node.left, prefix + (isLeft ? "│   " : "    "), true);
+            if (node.right) result += printTree(node.right, prefix + (isLeft ? "│   " : "    "), false);
+            return result;
+        }
+
+        const rules = [];
+
+        // Create rule
+        document.getElementById('createRuleBtn').addEventListener('click', () => {
+            const ruleInput = document.getElementById('ruleInput').value;
+            try {
+                const ast = parseRuleString(ruleInput);
+                rules.push(ast);
+                const treeString = printTree(ast);
+                document.getElementById('createRuleTree').textContent = treeString;
+                Swal.fire('Success', 'Rule created successfully!', 'success');
+            } catch (error) {
+                Swal.fire('Error', 'Error creating rule: ' + error.message, 'error');
+            }
+        });
+
+        // Combine rules
+        document.getElementById('combineRulesBtn').addEventListener('click', () => {
+            const combinedRuleInput = document.getElementById('combinedRuleInput').value.split('\n').filter(Boolean);
+            try {
+                const combinedRules = combinedRuleInput.map(parseRuleString);
+                const combinedAST = combineNodes(combinedRules, 'AND'); // Combine with AND
+                const treeString = printTree(combinedAST);
+                document.getElementById('combineRuleTree').textContent = treeString;
+                Swal.fire('Success', 'Rules combined successfully!', 'success');
+            } catch (error) {
+                Swal.fire('Error', 'Error combining rules: ' + error.message, 'error');
+            }
+        });
+
+        // Evaluate rule
+        document.getElementById('evaluateRuleBtn').addEventListener('click', () => {
+            const dataInput = document.getElementById('dataInput').value;
+            try {
+                const data = JSON.parse(dataInput);
+                const combinedRuleAST = combineNodes(rules, 'AND'); // Evaluate the combined rules
+                const result = evaluate(combinedRuleAST, data);
+                document.getElementById('evaluateRuleTree').textContent = `Evaluation Result: ${result}`;
+                document.getElementById('resultDisplay').textContent = `Result: ${result ? 'True' : 'False'}`;
+
+                // Visual representation of combined rule evaluation
+                const combinedVisual = `Combined Rule: ${rules.map(rule => printTree(rule)).join('\n')}\nEvaluation Result: ${result ? 'True' : 'False'}`;
+                document.getElementById('evaluateRuleTree').textContent += `\n\n${combinedVisual}`;
+            } catch (error) {
+                Swal.fire('Error', 'Error evaluating rule: ' + error.message, 'error');
+            }
+        });
+    </script>
+</body>
+</html>
