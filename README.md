@@ -30,7 +30,7 @@ This project implements a **Rule Engine** using Abstract Syntax Trees (AST). The
 ### Live Preview
 [Live Website Link](https://vatsalpatel1123.github.io/Rule-Engine-using-AST/)
 
-![Destop Preview](images/demo.png)
+![Destop Preview](Image/demo.png)
 
 ---
 
